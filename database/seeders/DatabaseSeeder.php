@@ -19,5 +19,8 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
+
+        \App\Models\User::factory()->count(5)->create();
+        $this->call(TerrainSeeder::class);
     }
 }

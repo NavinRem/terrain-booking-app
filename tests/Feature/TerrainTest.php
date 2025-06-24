@@ -11,10 +11,12 @@ class TerrainTest extends TestCase
     /**
      * A basic feature test example.
      */
+    use RefreshDatabase;
+    
     public function test_example(): void
     {
-        $response = $this->get('/');
-
+        \App\Models\Terrain::factory()->count(3)->create();
+        $response = $this->get('/terrains');
         $response->assertStatus(200);
     }
 }
