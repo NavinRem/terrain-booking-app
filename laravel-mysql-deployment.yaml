@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laravel-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: laravel
+  template:
+    metadata:
+      labels:
+        app: laravel
+    spec:
+      containers:
+      - name: web-container
+        image: /terrain-booking-app:latest
+        ports:
+        - containerPort: 8080
+        - containerPort: 22
+        volumeMounts:
+        - name: app-code
+          mountPath: /var/www/html
+
+      - name: git-container
+        image: alpine/git
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          git clone https://github.com/yourusername/your-laravel-project.git /data &&
+          sleep infinity
+        volumeMounts:
+        - name: app-code
+          mountPath: /data
+
+      volumes:
+      - name: app-code
+        emptyDir: {}

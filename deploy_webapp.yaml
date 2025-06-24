@@ -1,0 +1,64 @@
+---
+- name: Deploy and test web app in Kubernetes pod
+  hosts: localhost
+  gather_facts: no
+  vars:
+    pod_name: web-server-pod-name        # <-- your pod name here
+    container_name: web-container-name   # <-- your container name (if single container, can omit -c flag)
+    namespace: default                   # <-- your pod's namespace
+    repo_path: /var/www/html             # <-- path inside pod of your git repo
+    mysql_host: db             # <-- your prod MySQL host
+    mysql_user: navin                     # <-- MySQL user
+    mysql_password: navin@1234      # <-- MySQL password (use vault for security)
+    mysql_db: terrain_booking_db      # <-- MySQL production database name
+    backup_file: "/tmp/mysql_backup_{{ ansible_date_time.iso8601 }}.sql"
+
+  tasks:
+    - name: Check if git working tree is clean inside pod
+      shell: |
+        kubectl exec -n {{ namespace }} {{ pod_name }} -c {{ container_name }} -- \
+        sh -c "cd {{ repo_path }} && git status --porcelain"
+      register: git_status
+
+    - name: Fail if there are local git changes inside pod
+      fail:
+        msg: "Local changes exist inside pod repo, aborting git pull."
+      when: git_status.stdout != ""
+
+    - name: Pull latest git code inside pod
+      shell: |
+        kubectl exec -n {{ namespace }} {{ pod_name }} -c {{ container_name }} -- \
+        sh -c "cd {{ repo_path }} && git pull"
+      when: git_status.stdout == ""
+
+    - name: Run composer install inside pod
+      shell: |
+        kubectl exec -n {{ namespace }} {{ pod_name }} -c {{ container_name }} -- \
+        sh -c "cd {{ repo_path }} && composer install --no-interaction --no-dev --optimize-autoloader"
+
+    - name: Run npm install inside pod
+      shell: |
+        kubectl exec -n {{ namespace }} {{ pod_name }} -c {{ container_name }} -- \
+        sh -c "cd {{ repo_path }} && npm install"
+
+    - name: Run npm build inside pod
+      shell: |
+        kubectl exec -n {{ namespace }} {{ pod_name }} -c {{ container_name }} -- \
+        sh -c "cd {{ repo_path }} && npm run build"
+
+    - name: Run tests inside pod with SQLite config
+      shell: |
+        kubectl exec -n {{ namespace }} {{ pod_name }} -c {{ container_name }} -- \
+        sh -c "cd {{ repo_path }} && \
+               export DB_CONNECTION=sqlite && \
+               php artisan test"
+      register: test_result
+      failed_when: test_result.rc != 0
+
+    - name: Backup MySQL database from control node
+      shell: >
+        mysqldump -h {{ mysql_host }} -u {{ mysql_user }} -p'{{ mysql_password }}' {{ mysql_db }} > {{ backup_file }}
+
+    - name: Show backup file location
+      debug:
+        msg: "Database backup saved at {{ backup_file }}"
